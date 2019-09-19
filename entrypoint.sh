@@ -11,7 +11,7 @@ echo "Starting Cloud SQL Proxy for: ${SOURCE_NAME}"
 
 # Attempt connection
 COUNTER=0
-until mysql -u root -h 127.0.0.1 "-p${SOURCE_PASSWORD}" -e '\q' >/dev/null 2>&1; do
+until mysql -u ${USER} -h 127.0.0.1 "-p${SOURCE_PASSWORD}" -e '\q' >/dev/null 2>&1; do
   if [ $COUNTER -gt 4 ]; then
     echo "Unable to connect SQL proxy."
     exit 1
