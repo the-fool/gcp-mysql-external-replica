@@ -18,18 +18,52 @@ gcloud beta sql instances create \
   --source-ip-address=${SOURCE_IP} \
   --source-port=${SOURCE_PORT}
 
+echo "Creating slave instance.  This will take a minute."
+
 gcloud beta sql instances create ${REPLICA_NAME} \
     --master-instance-name=${REPRESENTATION_NAME} \
     --master-username=${REPLICA_USER} \
     --master-password=${REPLICA_PASSWORD} \
     --master-dump-file-path=gs://${BUCKET}/dump.sql.gz \
     --tier=${MACHINE_TYPE} \
-    --storage-size=${DISK_SIZE}
+    --storage-size=${DISK_SIZE} &
+
+echo "Slave instance creating.  Waiting for outgoing IP address"
 
 IP_ADDRESS=''
-until [[! -z IP_ADDRESS ]]; do
-  IP_ADDRESS=$(gcloud sql instances describe ${REPLICA_NAME} --format="flattened(ipAddresses)" | sed '3q;d' | grep -oP '(?<=: )[^ ]*')
+COUNTER=0
+until [[ -n "$IP_ADDRESS" ]]; do
+  if [ $COUNTER -gt 10 ]; then
+    echo "Unable to create database"
+    exit 1
+  fi
+  sleep 2
+  COUNTER=$(( $COUNTER + 1 ))
+  IP_ADDRESS=$(gcloud sql instances describe ${REPLICA_NAME} --format="flattened(ipAddresses)" \
+    | sed '3q;d' \
+    | grep -oP '(?<=: )[^ ]*')
 done
 
 echo "Outgoing IP: ${IP_ADDRESS}"
-gcloud sql instances patch ${SOURCE_DATABASE_NAME} --authorized-networks=$IP_ADDRESS
+ORIGINAL_AUTHORIZED_IPS=$(gcloud sql instances describe ${SOURCE_DATABASE_NAME} --format="csv(settings.ipConfiguration.authorizedNetworks[].value)" \
+  | tail -n 1 \
+  | sed 's/;/,/g')
+echo "Original source authorized IPS: $ORIGINAL_AUTHORIZED_IPS"
+
+NEW_IPS=$ORIGINAL_AUTHORIZED_IPS,$IP_ADDRESS
+
+echo "Adding slave IP to authorized networks for source database"
+
+gcloud sql instances patch ${SOURCE_DATABASE_NAME} --authorized-networks=$NEW_IPS --quiet
+
+echo "Waiting for operation to complete"
+COUNTER=0
+until [[ RUNNABLE == $(gcloud sql instances describe ${REPLICA_NAME} --format="value(state)") ]]; do
+  if [[ $COUNTER -gt 30 ]]; then
+    echo "Timed out creating instance"
+    exit 1
+  fi
+  COUNTER=$(( $COUNTER + 1 ))
+  sleep 5
+  echo "..."
+done

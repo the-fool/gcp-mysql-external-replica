@@ -2,22 +2,10 @@
 
 USER="${USER:-root}"
 
-if [ -z "$DATABASES" ]; then 
-	echo "DATABASES must be set: db1,db2"
-fi
-
-if [ -z "$SOURCE_NAME" ]; then 
-	echo "SOURCE_NAME must be set: project:db"
-fi
-
-
-if [ -z "$BUCKET" ]; then 
-	echo "Bucket must be set: my-bucket"
-fi
-
 source /root/google-cloud-sdk/path.bash.inc
 
-echo "Starting Cloud SQL Proxy"
+SOURCE_NAME=${SOURCE_PROJECT}:${SOURCE_REGION}:${SOURCE_DATABASE_NAME}
+echo "Starting Cloud SQL Proxy connection to ${SOURCE_NAME}"
 
 # /cloud_sql_proxy -instances=${SOURCE_NAME}=tcp:3306 -credential_file=/creds/creds.json &
 /cloud_sql_proxy -instances=${SOURCE_NAME}=tcp:3306 &
@@ -30,7 +18,7 @@ do
     echo "Unable to connect SQL proxy."
     exit 1
   fi
-  COUNTER=$(( $counter + 1 ))
+  COUNTER=$(( $COUNTER + 1 ))
   echo "Waiting for connection . . . "
   sleep 2
 done
